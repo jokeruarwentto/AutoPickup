@@ -13,7 +13,7 @@ Automatically pickup items near you without needing to right click on it.
 
 ### Installation
 - Install [BepInEx](https://builds.bepinex.dev/projects/bepinex_be/572/BepInEx_UnityMono_x64_9c2b17f_6.0.0-be.572.zip)
-- Extract ``me.arwent.AutoPickup.dll`` folder into _(VRising folder)/BepInEx/plugins_
+- Extract ``me.arwent.AutoPickup.dll`` folder into _(Dinkum folder)/BepInEx/plugins_
 
 ### Configuration
 AutoPickup supports the following configuration settings, available in `me.arwent.AutoPickup.cfg`
