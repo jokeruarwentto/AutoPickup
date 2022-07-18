@@ -19,6 +19,7 @@ Automatically pickup items near you without needing to right click on it.
 AutoPickup supports the following configuration settings, available in `me.arwent.AutoPickup.cfg`
 
 Plugin Options:
+- `Toggle` [default `F1`]: The Unity's KeyCode that will be used to toggle auto pickup in game.
 - `Distance` [default `2`]: The maximum distance the player will be able to auto pickup.
 
 ### Support
