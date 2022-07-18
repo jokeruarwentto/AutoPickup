@@ -39,7 +39,7 @@ public class Plugin : BaseUnityPlugin
 
         _isEnabled = !_isEnabled;
         NotificationManager.manage.createChatNotification(
-            $"AutoPick is now {(_isEnabled ? "activated" : "deactivated")}.");
+            $"AutoPickup is now {(_isEnabled ? "activated" : "deactivated")}.");
     }
 
     private IEnumerator DoPickup()
