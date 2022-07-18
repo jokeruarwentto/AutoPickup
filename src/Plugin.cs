@@ -1,5 +1,7 @@
+﻿using System.Linq;
 using BepInEx;
 using BepInEx.Configuration;
+using Mirror;
 using UnityEngine;
 
 namespace AutoPickup;
@@ -22,25 +24,18 @@ public class Plugin : BaseUnityPlugin
 
     private void Update()
     {
-        var pickups = FindObjectsOfType<DroppedItem>();
-
-        if (pickups is not { Length: > 0 })
+        if (FindObjectsOfType<DroppedItem>().Length <= 0 && Inventory.inv.localChar == null)
             return;
 
-        foreach (var pickup in pickups)
+        foreach (var pickup in FindObjectsOfType<DroppedItem>().ToList().Where(pickup =>
+                     WorldManager.manageWorld.itemsOnGround.Contains(pickup) &&
+                     Vector3.Distance(Inventory.inv.localChar.GetComponent<CharMovement>().transform.position,
+                         pickup.transform.position) <= _distance.Value))
         {
-            var pickupPosition = pickup.transform.position;
-            var playerPosition = Inventory.inv.localChar.GetComponent<CharMovement>().transform.position;
+            if (!Inventory.inv.addItemToInventory(pickup.myItemId, pickup.stackAmount)) continue;
 
-            if (Vector3.Distance(playerPosition, pickupPosition) > _distance.Value)
-                continue;
-
-            if (Inventory.inv.addItemToInventory(pickup.myItemId, pickup.stackAmount))
-            {
-                SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
-                pickup.pickUp();
-                Destroy(pickup.gameObject);
-            }
+            WorldManager.manageWorld.itemsOnGround.Remove(pickup);
+            NetworkServer.Destroy(pickup.gameObject);
         }
     }
 }
