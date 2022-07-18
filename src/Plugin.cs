@@ -1,4 +1,4 @@
-﻿using BepInEx;
+using BepInEx;
 using BepInEx.Configuration;
 using UnityEngine;
 
@@ -40,10 +40,6 @@ public class Plugin : BaseUnityPlugin
                 SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
                 pickup.pickUp();
                 Destroy(pickup.gameObject);
-            }
-            else
-            {
-                NotificationManager.manage.turnOnPocketsFullNotification();
             }
         }
     }
