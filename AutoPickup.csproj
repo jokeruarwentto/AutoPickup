@@ -3,7 +3,7 @@
 		<TargetFramework>net48</TargetFramework>
 		<AssemblyName>me.arwent.AutoPickup</AssemblyName>
 		<Description>Automatically pickup items near you without needing to right click on it.</Description>
-		<Version>1.1.0</Version>
+		<Version>1.2.0</Version>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<LangVersion>latest</LangVersion>
 		<GameLibraryPath>D:\SteamLibrary\steamapps\common\Dinkum\Dinkum_Data\Managed</GameLibraryPath>
