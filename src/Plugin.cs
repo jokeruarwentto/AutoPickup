@@ -1,4 +1,6 @@
-﻿using System.Linq;
+﻿using System;
+using System.Collections;
+using System.Linq;
 using BepInEx;
 using BepInEx.Configuration;
 using Mirror;
@@ -9,69 +11,118 @@ namespace AutoPickup;
 [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
 public class Plugin : BaseUnityPlugin
 {
-    private static readonly float[] _distances = {2.0f, 4.0f, 8.0f, 16.0f, 32.0f, 64.0f, 128.0f, 256.0f, 512.0f};
     private readonly ConfigEntry<float> _distance;
-    private readonly ConfigEntry<KeyCode> _distanceChangeKey;
-    private readonly ConfigEntry<KeyCode> _toggle;
-    private int _currentDistance;
-    private bool _isEnabled;
+    private readonly ConfigEntry<bool> _enabled;
+    private readonly ConfigEntry<float> _refreshTime;
+    private readonly ConfigEntry<KeyCode> _settingsKey;
+
+    private bool _enabledMenu;
     private float _timer;
+    private float _fps = 0;
 
     public Plugin()
     {
-        _toggle = Config.Bind("General", "Toggle", KeyCode.F1,
-            "The Unity's KeyCode that will be used to toggle auto pickup in game.");
+        _enabled = Config.Bind("General", "Enabled", true,
+            "Whether to enable by default the auto pickup feature.");
 
-        _distanceChangeKey = Config.Bind("General", "DistanceKey", KeyCode.F2,
-            "The Unity's KeyCode that will be used to change the distance directly in game.");
+        _settingsKey = Config.Bind("General", "SettingsKey", KeyCode.F1,
+            "The Unity's key that will show the AutoPickup settings.");
 
-        _distance = Config.Bind("General", "Distance", _distances[_currentDistance],
-            "The distance the player will be able to auto pickup drops.");
+        _distance = Config.Bind("General", "Distance", 8.0f,
+            "The distance that will auto pickup dropped items.");
+
+        _refreshTime = Config.Bind("General", "RefreshTime", 1.0f,
+            "The time that will refresh the dropped items and try to pickup them.");
     }
 
-    private void Awake()
+    public void Start()
     {
         Logger.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is loaded!");
+        StartCoroutine(FramePerSecondsRoutine());
     }
 
+    private IEnumerator FramePerSecondsRoutine()
+    {
+        while (true)
+        {
+            _fps = 1 / Time.deltaTime;
+            yield return new WaitForSeconds(0.6f);
+        }
+    }
+    
     private void Update()
     {
-        if (Input.GetKeyDown(_toggle.Value))
+        if (NetworkMapSharer.share.localChar == null) return;
+
+        if (Input.GetKeyDown(_settingsKey.Value))
         {
-            _isEnabled = !_isEnabled;
-            NotificationManager.manage.createChatNotification(
-                $"AutoPickup is now {(_isEnabled ? "activated" : "deactivated")}.");
+            _enabledMenu = !_enabledMenu;
+            CameraController.control.lockCamera(_enabledMenu);
+            CameraController.control.cameraShowingSomething = _enabledMenu;
+            Cursor.visible = _enabledMenu;
         }
 
-        if (Input.GetKeyDown(_distanceChangeKey.Value))
+        if (_enabled.Value)
         {
-            if (_currentDistance >= _distances.Length)
-                _currentDistance = 0;
-            else
-                _currentDistance += 1;
+            _timer += Time.deltaTime;
 
-            _distance.Value = _currentDistance;
-            _distance.ConfigFile.Save();
+            if (_timer >= _refreshTime.Value)
+            {
+                foreach (var pickup in FindObjectsOfType<DroppedItem>().Where(item =>
+                             Vector3.Distance(NetworkMapSharer.share.localChar.transform.position,
+                                 item.transform.position) <=
+                             _distance.Value))
+                {
+                    if (!Inventory.inv.addItemToInventory(pickup.myItemId, pickup.stackAmount)) continue;
+                    SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
 
-            NotificationManager.manage.createChatNotification(
-                $"You changed the AutoPickup distance to {_distance.Value}.");
+                    if (WorldManager.manageWorld.itemsOnGround.Contains(pickup))
+                        WorldManager.manageWorld.itemsOnGround.Remove(pickup);
+
+                    NetworkServer.UnSpawn(pickup.transform.root.gameObject);
+                    NetworkServer.Destroy(pickup.transform.root.gameObject);
+                }
+
+                _timer = 0;
+            }
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (_enabledMenu)
+        {
+            CameraController.control.lockCamera(false);
+            CameraController.control.cameraShowingSomething = false;
+            Cursor.visible = false;
         }
 
-        _timer += Time.deltaTime;
-        if (!_isEnabled || !(_timer >= 1.0f)) return;
+        StopAllCoroutines();
+        Logger.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is destroyed!");
+    }
 
-        foreach (var pickup in FindObjectsOfType<DroppedItem>()
-                     .Where(item =>
-                         WorldManager.manageWorld.itemsOnGround.Contains(item) &&
-                         Vector3.Distance(Inventory.inv.localChar.GetComponent<CharMovement>().transform.position,
-                             item.transform.position) <= 64.0f))
-        {
-            if (!Inventory.inv.addItemToInventory(pickup.myItemId, pickup.stackAmount)) continue;
-            SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
-            WorldManager.manageWorld.itemsOnGround.Remove(pickup);
-            NetworkServer.Destroy(pickup.gameObject);
-        }
+    private void OnGUI()
+    {
+        if (!_enabledMenu) return;
 
-        _timer = 0;
+        GUI.Box(new Rect(10.0f, Screen.height / 2.5f, 256.0f, 118.0f), "AutoPickup Settings");
+
+        _enabled.Value = GUI.Toggle(new Rect(18.0f, Screen.height / 2.5f + 22.0f, 256.0f, 22.0f), _enabled.Value,
+            " Active");
+
+        GUI.Label(new Rect(18.0f, Screen.height / 2.5f + 22.0f * 2.0f, 100.0f, 22.0f),
+            $"Distance: {_distance.Value}");
+        _distance.Value = (float) Math.Floor(GUI.HorizontalSlider(
+            new Rect(108.0f, Screen.height / 2.5f + 22.0f * 2.3f, 256.0f - 108.0f, 22.0f), _distance.Value, 1.0f,
+            128.0f));
+
+        GUI.Label(new Rect(18.0f, Screen.height / 2.5f + 22.0f * 3.0f, 100.0f, 22.0f),
+            $"Refresh: {_refreshTime.Value:0.#}s");
+        _refreshTime.Value = GUI.HorizontalSlider(
+            new Rect(108.0f, Screen.height / 2.5f + 22.0f * 3.3f, 256.0f - 108.0f, 22.0f), _refreshTime.Value, 0.0f,
+            2.0f);
+
+        GUI.Label(new Rect(18.0f, Screen.height / 2.5f + 22.0f * 4.0f, 100.0f, 22.0f),
+            $"FPS: {_fps:0.#}");
     }
 }
