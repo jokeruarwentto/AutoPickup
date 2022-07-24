@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Linq;
 using BepInEx;
@@ -46,7 +46,7 @@ public class Plugin : BaseUnityPlugin
         while (true)
         {
             _fps = 1 / Time.deltaTime;
-            yield return new WaitForSeconds(0.6f);
+            yield return new WaitForSeconds(1.0f);
         }
     }
     
