@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Linq;
 using BepInEx;
@@ -13,12 +13,13 @@ public class Plugin : BaseUnityPlugin
 {
     private readonly ConfigEntry<float> _distance;
     private readonly ConfigEntry<bool> _enabled;
+    private readonly ConfigEntry<KeyCode> _hotKey;
     private readonly ConfigEntry<float> _refreshTime;
     private readonly ConfigEntry<KeyCode> _settingsKey;
 
     private bool _enabledMenu;
+    private float _fps;
     private float _timer;
-    private float _fps = 0;
 
     public Plugin()
     {
@@ -27,6 +28,9 @@ public class Plugin : BaseUnityPlugin
 
         _settingsKey = Config.Bind("General", "SettingsKey", KeyCode.F1,
             "The Unity's key that will show the AutoPickup settings.");
+
+        _hotKey = Config.Bind("General", "HotKey", KeyCode.F2,
+            "The Unity's key that will toggles the auto pickup.");
 
         _distance = Config.Bind("General", "Distance", 8.0f,
             "The distance that will auto pickup dropped items.");
@@ -41,15 +45,6 @@ public class Plugin : BaseUnityPlugin
         StartCoroutine(FramePerSecondsRoutine());
     }
 
-    private IEnumerator FramePerSecondsRoutine()
-    {
-        while (true)
-        {
-            _fps = 1 / Time.deltaTime;
-            yield return new WaitForSeconds(1.0f);
-        }
-    }
-    
     private void Update()
     {
         if (NetworkMapSharer.share.localChar == null) return;
@@ -62,43 +57,48 @@ public class Plugin : BaseUnityPlugin
             Cursor.visible = _enabledMenu;
         }
 
-        if (_enabled.Value)
+        if (Input.GetKeyDown(_hotKey.Value))
         {
-            _timer += Time.deltaTime;
+            _enabled.Value = !_enabled.Value;
+            NotificationManager.manage.createChatNotification(
+                $"AutoPickup is now {(_enabled.Value ? "enabled" : "disabled")}.");
+            Config.Save();
+        }
 
-            if (_timer >= _refreshTime.Value)
+        if (!_enabled.Value) return;
+        _timer += Time.deltaTime;
+        if (!(_timer >= _refreshTime.Value)) return;
+
+        if (NetworkMapSharer.share.isServer)
+            foreach (var item in WorldManager.manageWorld.itemsOnGround.ToList().Where(item =>
+                         Vector3.Distance(NetworkMapSharer.share.localChar.transform.position,
+                             item.transform.position) <=
+                         _distance.Value))
             {
-                foreach (var pickup in FindObjectsOfType<DroppedItem>().Where(item =>
-                             Vector3.Distance(NetworkMapSharer.share.localChar.transform.position,
-                                 item.transform.position) <=
-                             _distance.Value))
-                {
-                    if (!Inventory.inv.addItemToInventory(pickup.myItemId, pickup.stackAmount)) continue;
-                    SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
+                if (!Inventory.inv.addItemToInventory(item.myItemId, item.stackAmount)) continue;
 
-                    if (WorldManager.manageWorld.itemsOnGround.Contains(pickup))
-                        WorldManager.manageWorld.itemsOnGround.Remove(pickup);
-
-                    NetworkServer.UnSpawn(pickup.transform.root.gameObject);
-                    NetworkServer.Destroy(pickup.transform.root.gameObject);
-                }
-
-                _timer = 0;
+                SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
+                item.pickUpLocal();
+                item.pickUp();
+                NetworkServer.UnSpawn(item.gameObject);
+                NetworkServer.Destroy(item.gameObject);
             }
-        }
-    }
+        else
+            foreach (var item in FindObjectsOfType<DroppedItem>().Where(item =>
+                         Vector3.Distance(NetworkMapSharer.share.localChar.transform.position,
+                             item.transform.position) <=
+                         _distance.Value))
+            {
+                if (!Inventory.inv.addItemToInventory(item.myItemId, item.stackAmount)) continue;
 
-    private void OnDestroy()
-    {
-        if (_enabledMenu)
-        {
-            CameraController.control.lockCamera(false);
-            CameraController.control.cameraShowingSomething = false;
-            Cursor.visible = false;
-        }
+                SoundManager.manage.play2DSound(SoundManager.manage.pickUpItem);
+                item.pickUpLocal();
+                item.pickUp();
+                NetworkServer.UnSpawn(item.gameObject);
+                NetworkServer.Destroy(item.gameObject);
+            }
 
-        StopAllCoroutines();
-        Logger.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is destroyed!");
+        _timer = 0;
     }
 
     private void OnGUI()
@@ -124,5 +124,14 @@ public class Plugin : BaseUnityPlugin
 
         GUI.Label(new Rect(18.0f, Screen.height / 2.5f + 22.0f * 4.0f, 100.0f, 22.0f),
             $"FPS: {_fps:0.#}");
+    }
+
+    private IEnumerator FramePerSecondsRoutine()
+    {
+        while (true)
+        {
+            _fps = 1 / Time.deltaTime;
+            yield return new WaitForSeconds(1.0f);
+        }
     }
 }
